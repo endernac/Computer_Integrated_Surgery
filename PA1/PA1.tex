@@ -1,0 +1,263 @@
+\documentclass[12pt,letterpaper]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{libertine}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage[style=ieee, backend=biber]{biblatex}
+\usepackage{verbatim}
+\usepackage{listings}
+\usepackage{pdfpages}
+\addbibresource{references.bib}
+\usepackage{libertinust1math}
+\usepackage{csquotes}
+\lstset{inputpath={programs/output/}}
+\usepackage[left=1.00in, right=1.00in, top=1.00in, bottom=1.00in]{geometry}
+\author{Andrew Cornelio \& Kevin Rao}
+\title{Programming Assignment 1 Report}
+\begin{document}
+    \includepdf[]{cover}
+	\maketitle
+	
+	\section{Mathematical Approach}
+
+	\subsection{Registration}
+	    For the registration portion of the assignment, the steps outlined by Arun et al. were followed \cite{4767965}.  First, a registration between point clouds as can be represented as
+        \[\vec{p}_i' = R\vec{p}_i + \vec{T} + N_i'\]
+        where $p_i'$ is the $i$th point of the target point cloud, $R$ is a rotation matrix, $\vec{p}_i$ is the $i$th point of the source point cloud, $\vec{T}$ is the translation vector, and $\vec{N}_i$ is a noise vector. 
+        $T$ can be easily found by calculating the displacement of the centroid of $\vec{p}_i$ and $\vec{p}_i'$.
+        \[\vec{T} = \frac{\sum_i \vec{p}_i' - \sum_i \vec{p}_i}{n}\]
+        The rotation matrix $R$ can be found by applying singular value decomposition in the following way:
+        
+        First, let $\vec{p}$ and $\vec{p}'$ be the centroids for the source and target point clouds respecrtively. 
+        Then set 
+        \begin{align*}
+            \vec{q}_i &= \vec{p}_i - \vec{p}\\
+            \vec{q}_i' &= \vec{p}_i'-\vec{p}'
+        \end{align*}
+        Next we create matrix $H$ as
+        \[H = \sum_{i=1}^n \vec{q}_i \otimes \vec{q}_i'\]
+        The matrix arises during the process of trying to minimize the least squares of the first equation.
+        To calculate the rotation matrix, the single value decomposition of $H$ is taken.
+        \begin{align*}
+            H &= U \Lambda V^T\\
+            R &= VU^T
+        \end{align*}
+        Note that $V$ and $U$ both have determinants of absolute value 1. Therefore, they can either be a rotation or a reflection.
+        However, $R$ needs to be a rotation.
+        $R$ can be classified as a rotation or reflection by finding its determinant.
+        If it is 1, then it is a rotation matrix. If it is -1, then it is a reflection matrix.
+        This can be fixed by negating the last column of $V$.
+        
+        \subsection{Pivot Calibration}
+        The displacement from a reference frame to a post needs to be found.
+        \[\vec{b}_\text{post} = F_k \vec{b}_\text{tip} = R_k \vec{b}_\text{tip} + \vec{p}_k\]
+        
+        $k$ refers to the $k$th orientation of the pointer.
+        The concept is to have the pointer go through many orientations with its tip connected to the post. 
+        Then, assuming all the orientations of the pointer are known,the position of the post can be solved for. Thay can seen that as follows:
+        \[R_k b_\text{tip} - b_\text{post} = -p_k\]
+        A least squares problem is then solved to estimate $\vec{b}_\text{post}$.
+        \[ \begin{bmatrix}
+        \vdots & \vdots\\
+        R_k & -I\\
+        \vdots & \vdots
+        \end{bmatrix} \begin{bmatrix}
+        \vec{b}_\text{tip}\\
+        \vec{b}_\text{post}
+        \end{bmatrix} = \begin{bmatrix}
+        \vdots\\
+        -\vec{p}_k\\
+        \vdots
+        \end{bmatrix}\]
+    
+    \section{Algorithmic Steps}
+    \subsection{Expected Values of Calibration Vectors (Question 4)}
+    Calibration data was extracted from their the \texttt{calreadings.txt} file and stored in arrays of frames of the same type (e.g.\ $\vec{D}_1, \ldots \vec{D}_{N_D}$ was stored in array $D$).
+    Similarly calibration points were extracted from \texttt{calreadings.txt} and stored in arrays of their respective names ($D$, $A$, $C$).
+    The arrays of calibration coordinate points $a$ and $c$ was centered by subtracting them from their centroid into arrays $a_c$ and $c_c$s.
+    $c$ was then converted into homogeneous coordinates and stored in matrix $c_\text{homo}$.
+    In a for loop iterating for the number of calibration frames of one type, $F_D$ and $F_A$ were calculated using the registration method described earlier with the centered calibration coordinate points $a_c$ and $c_c$ and calibration frames $D$ and $A$ for that iteration.
+    
+    With this information $\hat{C}$, can be calculated as 
+    \[\hat{C} = F_D^{-1}F_Ac_\text{homo}\]
+    $\hat{C}$ the first three columns of $\hat{C}$ was then stored in an array as a matrix.
+    At the end of the iterations, the array of $\hat{C}$ was reshaped into their correct shapes and values were rounded to the nearest two decimal points.
+    \subsection{EM Calibration}
+    The pivot data from the EM tracker extracted from \texttt{empivot.txt} was extracted into array  $G$.
+    The centroid for it was calculated and stored in vector $G_0$.
+    The coordinates were then translated relative to the midpoint by taking the difference between a vector in $G$ and $G_0$.
+    \[\vec{g}_j = \vec{G}_j - \vec{G}_0\]
+    Using, this and a frame from $G$, $F_g[k]$ could be calculated using the registration algorithm with inputs $g$ and $G^T[k]$
+    The rotation matrices $R_n$ and translation vector $\vec{p}_n$ were extracted from the frame.
+    Pivot calibration was used with the algorithm previously described using inputs $R_n$ and $\vec{p}_n$.
+    \subsection{Optical Tracker Calibration}
+    The pivot data was extracted into arrays $D$ for the pivot data of optical trackers in the EM base and $H$ for pivot data for optical trackers in the probe.
+    Additionally, calbody data was stored in arrays $d$, $a$, and $c$.
+    The process of finding the calibration coordinates was similar for how it was done in problem 4; the centroid of the first $H$ frame was taken and an array of homogeneous centered vectors $h$ was made from it.
+    $F_D$ and $F_H$ was then found using the registration algorithm, using $d$ and $h$ as inputs along with the dataframe $D$ and $H$ of a particular iteration.
+    $\hat{H}_{EM}$, the array transformed optical tracker coordinates into EM tracker coordinates, was retrieved solving for
+    \[\hat{H}_{EM} = F_D^{-1}F_h\vec{h}_\text{homo}\]
+    The rotation matrices and translation vectors were then acquired by finding the frame transformation from $h$ to $\hat{H}_{EM}$ and stored into arrays $R_n$ and $p_n$.
+    With these two arrays as inputs, the pivot calibration was performed and rounded.
+    \section{Program Structure}
+    \subsection{Cartesian Coordinates and Data Libraries}
+    To manage the storage of data to analyze and mathematical structures not directly supported by the programming language, the following libraries have been imported and referenced within the program:
+    \begin{itemize}
+        \item Scipy \cite{mckinney-proc-scipy-2010}
+        \item Numpy \cite{2020SciPy-NMeth}
+        \item Pandas \cite{harris2020array}
+    \end{itemize}
+    
+    Scipy was used for its matrix single value decomposition function.
+    Numpy was used for for its variety of mathematical operations, particularly those relating to linear algebra.
+    Pandas was used to extract data from the provided files and assisted with preprocessing.
+    \subsection{Modules}
+    The following modules were created with their respective functions below:
+    \begin{itemize}
+        \item \texttt{preprocess.py}: Extracts data from files and stores them in workable data structures.
+        \begin{itemize}
+            \item \texttt{calbody\_data}: extracts data from \texttt{calbody.txt} and returns arrays $d$, $a$, and $c$ containing optical tracker points on the EM marker, optical tracker points on the calibration body, and EM tracker points on calibration body.
+            \item \texttt{calreading\_data}: extracts data from \texttt{calreading.txt} and returns arrays $D$, $A$, and $C$ which contains the calibration data measurements of the points on the EM marker by the optical tracker, and the points on the calibration body by the EM and optical tracker.
+            \item \texttt{empivot\_data}: extracts data from \texttt{empivot.txt} and returns array $G$ containing frame measurements for EM markers on the probe.
+            \item \texttt{optpivot\_data}: extracts data from \texttt{optpivot.txt} and returns arrays $D$ and $H$ containing frame measurements for the optical markers on the EM base and probe respectively.
+        \end{itemize}
+        \item \texttt{registration.py}: 3D point registration between a source point $p$ and transformed points $p'$.
+        \begin{itemize}
+            \item \texttt{get\_Registration} takes arrays of points $p$ and $p'$ to compute homogeneous frame transformation matrix $F$
+            \item \texttt{get\_centroid}: computes the centroid of a point cloud.
+            \item \texttt{get\_H}: helper function that computes $H$ from $p$ and $p'$ as the sum of the outer product of centralized points and transformed points.
+            \item \texttt{get\_R\_hat}: helper function that computes rotation matrix from $p$ and $p'$ by finding the single value decomposition of $H$.
+            \item \texttt{get\_T\_hat}: computes translational vector from $p$ and $p'$ finding the difference of centroids of $p$ and $p'$.
+        \end{itemize}
+        \item \texttt{pointer.py}: point calibration
+        \begin{itemize}
+            \item \texttt{piv\_cal}: given array of rotation matrices $R_n$ of pointer body and array of translation vectors $p_n$ of pointer body, computes displacement of tip from pointer $b_\text{tip}$ and displacement of post $b_\text{post}$.
+        \end{itemize}
+    \end{itemize}
+    \subsection{Driver Program}
+    The driver program \texttt{main.py} takes the name of a dataset in the \texttt{./data/} folder and produces an output text file in the \texttt{./output/} folder that contain the estimated estimated post position with EM probe pivot calibration, estimated position with optical probe pivot calibration, and frames for the coordinates of expected calibration vectors from the EM tracker to the calibration object.
+    
+    The broad steps it undergoes are as follows:
+    \begin{enumerate}
+        \item Create filepaths for data.
+        \item Calculate expected values of calibration vectors $\vec{C}^\text{expected}$.
+        \item Compute estimated post position with EM probe.
+        \item Compute optical tracker calibration vectors and estimated post position with optical probe pivot calibration.
+        \item Write results to output file.
+    \end{enumerate}
+    \section{Results}
+    \subsection{Verification}
+    To verify the correctness of our approach, the provided data files were used as sources of data to input and test on.
+    Samples of the generated output files are included in the appendix of report in listings \ref{a} to \ref{g}.
+    Overall, the data between the given output files and generated output files were identical.
+    In Table \ref{tab:debug}, the EM and optical pivot positions were compared between the given auxillary file and the generated output file.
+\begin{table}[]
+\centering
+\caption{EM and Optical Positions of Debugging Data}
+\label{tab:debug}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+\textbf{Data} & \textbf{Pivot Type} & \textbf{Actual Position (Auxillary)} & \textbf{Generated Output Position} & \textbf{Error Magnitude} \\ \midrule
+\multirow{2}{*}{pa1-debug-a} & EM Pivot      & $(203.49, 206.40, 198.47)$ & $(203.49, 206.4, 198.47)$  & 0    \\
+                             & Optical Pivot & $(390.65, 393.24, 196.47)$ & $(390.65, 393.24, 196.47)$ & 0    \\
+\multirow{2}{*}{pa1-debug-b} & EM Pivot      & $(202.16, 190.53, 196.04)$ & $(202.16, 190.53, 196.04)$ & 0    \\
+                             & Optical Pivot & $(399.95, 409.91, 193.80)$ & $(399.95, 309.91, 193.8)$  & 0    \\
+\multirow{2}{*}{pa1-debug-c} & EM Pivot      & $(191.65, 205.54, 202.20)$ & $(191.82, 209.49, 205.01)$ & 1.41 \\
+                             & Optical Pivot & $(391.23, 392.88, 192.28)$ & $(391.23, 392.88, 192.28)$ & 0    \\
+\multirow{2}{*}{pa1-debug-d} & EM Pivot      & $(193.74, 192.93, 203.33)$ & $(193.74, 192.93, 203.33)$ & 0    \\
+                             & Optical Pivot & $(403.56, 394.22, 199.49)$ & $(403.87, 394.12, 199.44)$ & 0.60 \\
+\multirow{2}{*}{pa1-debug-e} & EM Pivot      & $(202.58, 194.16, 200.83)$ & $(202.4, 194.36, 204.71)$  & 3.89 \\
+                             & Optical Pivot & $(408.94, 408.60, 202.99)$ & $(409.14, 408.68, 202.79)$ & 0.29 \\
+\multirow{2}{*}{pa1-debug-f} & EM Pivot      & $(191.90, 201.06, 196.62)$ & $(188.6, 200.24, 193.84)$  & 4.39 \\
+                             & Optical Pivot & $(391.69, 395.28, 195.83)$ & $(391.63, 395.37, 195.82)$ & 0.11 \\
+\multirow{2}{*}{pa1-debug-g} & EM Pivot      & $(191.45, 197.30, 203.01)$ & $(185.67, 197.96, 197.93)$ & 7.72 \\
+                             & Optical Pivot & $(395.31, 403.22, 201.96)$ & $(395.48, 403.18, 201.9)$  & 0.18 \\ \bottomrule
+\end{tabular}%
+}
+\end{table}
+    As can be seen, a majority of the generated pivot positions have an error magnitude less than 1. 
+    The maximum error magnitude observed was for the EM Pivot position in pa1-debug-g at 7.72.
+    Using the distance between the EM pivot and optical pivot as a point of comparison, the error magnitude only accounts for approximately 2\%, so the error is not significant. 
+    
+    For verifying the calculation of the $C$ frames, an element by element mean square error was calculated for each output.
+    The results of this calculation can be found in Table \ref{tab:c}.
+    As can be observed in the table, the mean square error across all debug output files are very small, indicating the success of the program's ability to produces the $C$ frames, with the largest error being $1.2 \cdot 10^{-5}$ for pa1-debug-e.
+\begin{table}[]
+\centering
+\caption{Mean Square Error Between Debug Output File and Generated Output Files}
+\label{tab:c}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Data} & \textbf{Mean Square Error} \\ \midrule
+pa1-debug-a   & $1.32 \cdot 10^{-11}$            \\
+pa1-debug-b   & $2.3 \cdot 10^{-7}$               \\
+pa1-debug-c   & $2.7\cdot 10^{-8}$             \\
+pa1-debug-d   & $1.4\cdot 10^{-8}$               \\
+pa1-debug-e   & $1.2\cdot 10^{-5}$               \\
+pa1-debug-f   & $7.2 \cdot 10^{-7}$               \\
+pa1-debug-g   & $2.3 \cdot 10^{-6}$              \\ \bottomrule
+\end{tabular}%
+\end{table}
+    \subsection{Testing}
+    To test our registration algorithm, we created a point cloud of data using the \texttt{numpy.rand.random()} function. We created random translation and noise vectors the same way. The greatest magnitude of a vector in the random point cloud was on the order of 20. The magnitude of the translation was on the order of 30. The magnitude of the noise vector was on the order of 1. We then created a rotation matrix using the \texttt{scipy.stats.special\_ortho\_group()} function. We then transformed the generated point cloud by these known rotation, translation, and noise vectors. After to check the accuracy of our registration algorithm, we ran the algorithm on the synthetic data and tried to recover the known translation and rotation to within a small amount of error. We tested multiple cases to ensure our computed rotation had a determinant of 1.
+        
+    To test the accuracy of the pivot calibration method, we created a vector centered at the origin with known length and lying along the positive $z$ direction. Next, we created a random reference coordinate frame by picking a random point in the positive $z$ half space. We then created a rotation by generating small angles in each direction (less than .5 radians) and multiplying the corresponding fundamental rotation matrices. We created 10 such rotations. We then computed the distance from the tip of the vector to our reference frame for each rotation. Finally, we fed the rotation and displacement data into the pivot calibration algorithm and checked that we got the correct length of the tip (the fixed length of the original vector) and the correct distance to the post (the distance from the reference frame to the origin). We repeated this with different tip lengths, coordinates reference frames, and rotations.
+        
+    By this point, we were reasonably confident in the correctness of the registration algorithm and the pivot calibration algorithm, so it was just a matter of correctly applying them to the data. To do this, we ran the algorithms on the provided debugging data and ensured that we got the same results. 
+    \subsection{Unknown Data Results}
+    A sample containing the first thirty lines (header, pivot positions, first $C$ frame) of the output file for the unknown data input results can be viewed in the appendix at listings \ref{h} to \ref{k}.
+    Table \ref{tab:unknown} displays the results of EM pivot and optical pivot positions.
+    \begin{table}[]
+\centering
+\caption{EM and Optical Pivot Positions of Unknown Data}
+\label{tab:unknown}
+%
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Data}                  & \textbf{Pivot Type} & \textbf{Position}          \\ \midrule
+\multirow{2}{*}{pa1-unknown-h} & EM Pivot            & $(202.16, 215.48, 201.71)$ \\
+                               & Optical Pivot       & $(402.18, 409.18, 209.5)$  \\
+\multirow{2}{*}{pa1-unknown-i} & EM Pivot            & $(211.43, 209.17, 195.41)$ \\
+                               & Optical Pivot       & $(395.46, 393.91, 207.98)$ \\
+\multirow{2}{*}{pa1-unknown-j} & EM Pivot            & $(192.15, 195.72, 197.1)$  \\
+                               & Optical Pivot       & $(409.76, 402.98, 197.41)$ \\
+\multirow{2}{*}{pa1-unknown-k} & EM Pivot            & $(210.55, 193.03, 191.25)$ \\
+                               & Optical Pivot       & $(394.92, 396.92, 203.7)$  \\ \bottomrule 
+\end{tabular}%
+
+\end{table}
+    \section{Discussion}
+    From the verification of results from the given debugging data and from our own method of testing our methods, we have decent confidence in the validity of our solution.
+    While the generated output does not match the debugging output exactly, it matches it within an acceptable margin of error in both pivot position and $C$ frames.
+    In defining an algorithm to compute the 3D point registration and pivot calibration, we used a closed form solution, so there is no need for an iteratvive convergence criteria.
+    However, the approach does not use random sample consensus, and thus returned parameters are influenceable by outliers.
+    Future versions of the generated program should attempt to account for outliers that could significantly affect returned parameters.
+    \section{Contributions}
+    Andrew Cornelio was responsible for a majority of the programming work and wrote the Mathematical Approach section and Testing subsection of the report.
+    Kevin Rao was responsible for the rest of the report and wrote some preprocessing functions.
+	\printbibliography
+	\begin{appendix}
+	\section{Listings}
+	\lstinputlisting[label = a, caption = {Program Generated pa1-debug-a-output-1.txt Sample}, linerange={1-30}]{pa1-debug-a-output-1.txt}
+	\lstinputlisting[label = b, caption = {Program Generated pa1-debug-b-output-1.txt Sample}, linerange={1-30}]{pa1-debug-b-output-1.txt}
+	\lstinputlisting[label = c, caption = {Program Generated pa1-debug-c-output-1.txt Sample}, linerange={1-30}]{pa1-debug-c-output-1.txt}
+	\lstinputlisting[label = d, caption = {Program Generated pa1-debug-d-output-1.txt Sample}, linerange={1-30}]{pa1-debug-d-output-1.txt}
+	\lstinputlisting[label = e, caption = {Program Generated pa1-debug-e-output-1.txt Sample}, linerange={1-30}]{pa1-debug-e-output-1.txt}
+	\lstinputlisting[label = f, caption = {Program Generated pa1-debug-f-output-1.txt Sample}, linerange={1-30}]{pa1-debug-f-output-1.txt}
+	\lstinputlisting[label = g, caption = {Program Generated pa1-debug-g-output-1.txt Sample}, linerange={1-30}]{pa1-debug-g-output-1.txt}
+	\lstinputlisting[label = h, caption = {pa1-unknown-h-output-1.txt Sample}, linerange={1-30}]{pa1-unknown-h-output-1.txt}
+    \lstinputlisting[label = i, caption = {pa1-unknown-i-output-1.txt Sample}, linerange={1-30}]{pa1-unknown-i-output-1.txt}
+    \lstinputlisting[label = j, caption = {pa1-unknown-j-output-1.txt Sample}, linerange={1-30}]{pa1-unknown-j-output-1.txt}
+    \lstinputlisting[label = k, caption = {pa1-unknown-k-output-1.txt Sample}, linerange={1-30}]{pa1-unknown-k-output-1.txt}
+    \end{appendix}
+\end{document}
